@@ -40,7 +40,7 @@ export const TONE_DOT: Record<Tone, string> = {
 };
 
 export const SUGGESTIONS = [
-  { label: 'Get my clothes dry-cleaned and bring them back', request: DEMO_REQUEST, icon: 'hanger' },
+  { label: 'Get my clothes dry-cleaned with my Rover S6 buggy', request: DEMO_REQUEST, icon: 'hanger' },
   { label: 'Return my package to the shipping store', request: 'Return my package to the shipping store', icon: 'box' },
 ] as const;
 

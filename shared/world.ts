@@ -137,7 +137,7 @@ export const DEMO_PLAN: RobotPlan = {
     { action: 'PICK_UP', target: 'laundry_bag' },
     { action: 'MOVE_TO', target: 'dry_cleaner' },
     { action: 'DROP_OFF', target: 'dropoff_zone' },
-    { action: 'WAIT', durationMs: 4000, message: 'Cleaning in progress' },
+    { action: 'WAIT', durationMs: 3000, message: 'Cleaning in progress' },
     { action: 'PICK_UP', target: 'clean_laundry' },
     { action: 'RETURN_HOME' },
     { action: 'DROP_OFF', target: 'home_delivery_zone' },

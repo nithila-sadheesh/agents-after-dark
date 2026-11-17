@@ -12,12 +12,12 @@ import {
   updateActivity,
 } from './runtime';
 
-export const DEMO_REQUEST = 'Fo, take my clothes to the dry cleaner, get them cleaned, and bring them back.';
+export const DEMO_REQUEST = 'Fo, get my clothes dry-cleaned and bring them back. Use my Rover S6 delivery buggy.';
 
 const FO_PROCEED_MS = 25_000;      // stop blocking on Fo after this; keep polling in the background
 const FO_POLL_MS = 2_500;
 const FO_POLL_MAX_MS = 12 * 60_000; // real Fo research replies take ~8-9 min
-const DEMO_AUTO_APPROVE_MS = 1_800;
+const DEMO_AUTO_APPROVE_MS = 1_200;
 const DEMO_QUOTE = '$18.50';
 const QUOTE_RE = /\$\s?\d+(?:\.\d{2})?/;
 
@@ -156,26 +156,33 @@ async function prepareDemo(t: number) {
   const claude = (text: string, status: 'pending' | 'done' = 'done') => addActivity({ source: 'claude', verified: false, status, text });
   const step = async (id: string, ms: number, done?: string) => { await sleep(ms, t); updateActivity(id, done ? { status: 'done', text: done } : { status: 'done' }); };
 
-  await sleep(600, t);
+  await sleep(400, t);
   set({ stage: 'COORDINATING' });
   setChecklist('fo', 'active');
   emit({ type: 'agent.coordination_started', detail: 'ask_fo' });
-  const scene = claude('Generating 3D scene for this errand…', 'pending');
+  // Robot: identify the model and get a control protocol for it.
+  let r = fo('Identifying your robot · Rover S6 six-wheel delivery buggy…', 'pending');
   let id = fo('Searching for dry cleaners near you…', 'pending');
-  await step(scene, 700, 'Scene ready · your townhouse → Sparkle & Press, 4 blocks, 2 crossings');
+  await step(r, 500, 'Robot found · Rover S6 (buggy-01) · battery 92% · parked at home');
+  r = fo('Looking up Rover S6 robotics protocol…', 'pending');
   await step(id, 300, 'Found Sparkle & Press Dry Cleaners · 0.4 mi · 4.8★ · open until 7 PM');
-  const plan = claude('Planning robot route and actions…', 'pending');
+  await step(r, 400, 'Rover S6 SDK found · ROS 2 Nav2 actions + lid control API');
+  const scene = claude('Generating 3D scene for this errand…', 'pending');
   id = fo('Calling Sparkle & Press (415) 555-0142…', 'pending');
-  await step(plan, 900);
+  await step(scene, 500, 'Scene ready · your townhouse → Sparkle & Press, 4 blocks, 2 crossings');
+  const plan = claude('Planning robot route and actions…', 'pending');
+  await step(id, 600, 'Call connected · confirmed they accept robot drop-offs');
+  await step(plan, 200);
   applyPlan(DEMO_PLAN, 'demo', DEFAULT_SCENE);
   updateActivity(plan, { text: `Robot plan ready · ${DEMO_PLAN.steps.length} steps, validated` });
-  say('Plan ready: pick up the laundry bag, drive it to the dry cleaner, wait for cleaning, and bring it home.');
-  await step(id, 900, 'Call connected · confirmed they accept robot drop-offs');
+  r = fo('Writing Rover S6 command protocol from the plan…', 'pending');
   id = fo('Scheduling drop-off…', 'pending');
-  await step(id, 900, 'Booked · drop-off today 4:30 PM, ready tomorrow 9 AM');
+  await step(r, 500, 'Protocol compiled · nav_to_pose ×4, lid_open/close, cargo_load/unload');
+  await step(id, 400, 'Booked · drop-off today 4:30 PM, ready tomorrow 9 AM');
+  say('Plan ready: your Rover S6 will pick up the laundry bag, drive it to Sparkle & Press, wait for cleaning, and bring it home.');
   fo(`Quote: ${DEMO_QUOTE} for 3 garments`);
   setChecklist('fo', 'done', 'Fo coordination');
-  await sleep(500, t);
+  await sleep(300, t);
   return { plan: DEMO_PLAN, foReply: null as string | null, planSource: 'demo' as const };
 }
 
@@ -273,8 +280,18 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
     }
     set({ approval: null, stage: 'READY', robot: { status: 'Dispatching robot', moving: false } });
     if (opts.mode === 'demo') {
+      // Runs alongside the robot drive (adds no time to the demo).
       const pay = addActivity({ source: 'fo', verified: false, status: 'pending', text: `Paying Sparkle & Press ${approval.amount}…` });
-      sleep(900, t).then(() => updateActivity(pay, { status: 'done', text: `Paid ${approval.amount} · receipt #SP-20417 · pickup tomorrow 9 AM` }), () => {});
+      void (async () => {
+        await sleep(900, t);
+        updateActivity(pay, { status: 'done', text: `Paid ${approval.amount} · receipt #SP-20417` });
+        const mail = addActivity({ source: 'fo', verified: false, status: 'pending', text: 'Emailing Sparkle & Press the order details…' });
+        await sleep(1500, t);
+        updateActivity(mail, { status: 'done', text: 'Emailed order: 3 garments, robot drop-off 4:30 PM, Rover S6 arriving' });
+        await sleep(1200, t);
+        addActivity({ source: 'fo', verified: false, status: 'done', text: 'Sent you the receipt and pickup details by email' });
+        addActivity({ source: 'fo', verified: false, status: 'done', text: 'Dispatched Rover S6 · protocol uploaded · en route' });
+      })().catch(() => {});
     } else {
       addActivity(approval.source === 'fo_quote'
         ? { source: 'system', verified: false, status: 'done', text: `Approved ${approval.amount} locally — nothing sent to Fo, no charge made` }

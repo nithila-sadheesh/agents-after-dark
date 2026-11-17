@@ -17,7 +17,6 @@ export const DEMO_REQUEST = 'Fo, get my clothes dry-cleaned and bring them back.
 const FO_PROCEED_MS = 25_000;      // stop blocking on Fo after this; keep polling in the background
 const FO_POLL_MS = 2_500;
 const FO_POLL_MAX_MS = 12 * 60_000; // real Fo research replies take ~8-9 min
-const DEMO_AUTO_APPROVE_MS = 1_200;
 const DEMO_QUOTE = '$18.50';
 const QUOTE_RE = /\$\s?\d+(?:\.\d{2})?/;
 
@@ -269,7 +268,6 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
     check(t);
 
     const { approval, decision } = requestApproval(kind, foReply);
-    if (opts.mode === 'demo') sleep(DEMO_AUTO_APPROVE_MS, t).then(approve, () => {});
     const ok = await decision;
     check(t);
     if (!ok) {

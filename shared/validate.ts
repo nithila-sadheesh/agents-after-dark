@@ -1,6 +1,6 @@
 // Plan + scene validation (PRD §9.3). Pure functions, shared by server and client.
 import { ACTIONS, type ActionName, type PlanStep, type RobotPlan, type SceneObject, type SceneObjectType, type SceneSpec, type Vec3 } from './types';
-import { HOME_ANCHOR, ITEM_TARGETS, ROAD_WIDTH, ROAD_Z, ROBOT_ID, SHOP_ANCHOR, resolveWaypoint } from './world';
+import { CITY_BOUNDS, HOME_ANCHOR, ITEM_TARGETS, LOT_SETBACK, ROBOT_ID, SHOP_ANCHOR, STREETS_X, STREETS_Z, resolveWaypoint } from './world';
 
 const MAX_STEPS = 24;
 const WAIT_MIN = 500;
@@ -80,13 +80,10 @@ export function validatePlan(input: unknown): { ok: true; plan: RobotPlan } | { 
 
 const OBJECT_TYPES: readonly SceneObjectType[] = ['house', 'store', 'tree', 'lamp', 'car', 'bush', 'bench', 'mailbox'];
 const HEX = /^#[0-9a-fA-F]{6}$/;
-const BOUNDS_X = 22;
-const BOUNDS_Z = 12;
-// Interpretation note: the road band is the asphalt itself (half of ROAD_WIDTH either side of ROAD_Z) and building
-// clearance is 3 units; the literal "|z-ROAD_Z| < ROAD_WIDTH" / 4-unit rules would strip DEFAULT_SCENE's own lamps,
-// bench, mailbox and porch bushes.
-const ROAD_HALF = ROAD_WIDTH / 2;
-const ANCHOR_CLEARANCE = 3;
+// Decor must sit inside the city, off every street + sidewalk band, and clear of the hero buildings.
+const ANCHOR_CLEARANCE = 10;
+const onStreet = (x: number, z: number) =>
+  STREETS_X.some((sx) => Math.abs(x - sx) < LOT_SETBACK) || STREETS_Z.some((sz) => Math.abs(z - sz) < LOT_SETBACK);
 
 const cleanLabel = (v: unknown): string | undefined => {
   const s = str(v);
@@ -116,8 +113,8 @@ export function validateScene(input: unknown): SceneSpec | null {
     else if (id === 'shop') position = [...SHOP_ANCHOR];
     else {
       const [x, , z] = position;
-      if (Math.abs(x) > BOUNDS_X || Math.abs(z) > BOUNDS_Z) continue;
-      if (Math.abs(z - ROAD_Z) < ROAD_HALF) continue;
+      if (x < CITY_BOUNDS.minX || x > CITY_BOUNDS.maxX || z < CITY_BOUNDS.minZ || z > CITY_BOUNDS.maxZ) continue;
+      if (onStreet(x, z)) continue;
       if ([HOME_ANCHOR, SHOP_ANCHOR].some((a) => Math.hypot(x - a[0], z - a[2]) < ANCHOR_CLEARANCE)) continue;
     }
 

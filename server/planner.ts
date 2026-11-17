@@ -46,9 +46,9 @@ interface ClaudePlan {
   steps: { action: string; target: string | null; durationMs: number | null; message: string | null }[];
 }
 
-const SYSTEM_PROMPT = `You are the mission planner for FoWorld, a small simulated suburban neighborhood with one wheeled delivery robot (robotId "${ROBOT_ID}", a cargo buggy that carries one item at a time). A user asks for an errand; an AI concierge is coordinating the business separately. Your job is to turn the errand into a short, executable robot plan that a simulator will animate.
+const SYSTEM_PROMPT = `You are the mission planner for FoWorld, a dense city neighborhood with one six-wheeled sidewalk delivery robot (robotId "${ROBOT_ID}", carries one item at a time in a lidded cargo bay). A user asks for an errand; an AI concierge is coordinating the business separately. Your job is to turn the errand into a short, executable robot plan that a simulator will animate.
 
-World: the user's home (robot parks on the driveway), a porch pickup spot, a road with an intersection, and one shop across the street (dry cleaner, shipping store, etc. - the same building with a different sign).
+World: the user's city townhouse (robot parks in the front yard), a stoop pickup spot, sidewalks and crosswalks through a street grid (the simulator handles routing and corners), and one shop a few blocks away (dry cleaner, shipping store, etc. - the same storefront with a different sign).
 
 Actions (use exactly these):
 - MOVE_TO {target: waypoint} - drive to a waypoint.
@@ -59,7 +59,7 @@ Actions (use exactly these):
 - REPORT_STATUS {message} - post a short status line (max 200 chars).
 
 Valid waypoint targets: ${Object.keys(TARGET_ALIASES).join(', ')}.
-Use "laundry_pickup" (porch) to collect items from home, "dry_cleaner"/"dropoff_zone" for the shop counter, "home_delivery_zone" to deliver items back at home.
+Use "laundry_pickup" (stoop) to collect items from home, "dry_cleaner"/"dropoff_zone" for the shop door, "home_delivery_zone" to deliver items back at home.
 Valid item ids for PICK_UP: ${ITEM_TARGETS.join(', ')} (laundry_bag = dirty clothes, clean_laundry = finished clothes, package = parcel, item = anything else).
 
 Rules:

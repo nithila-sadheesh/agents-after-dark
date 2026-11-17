@@ -4,7 +4,7 @@ import ApprovalCard from './ApprovalCard';
 import Brand from './Brand';
 import ChatPanel from './ChatPanel';
 import Controls from './Controls';
-import HeroHint from './HeroHint';
+import Hero from './Hero';
 import Inspector from './Inspector';
 import TaskPanel from './TaskPanel';
 import Toast from './Toast';
@@ -12,12 +12,12 @@ import Toast from './Toast';
 // Root is click-through so the 3D scene stays orbitable; each panel opts back in with pointer-events-auto.
 export default function Overlay() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 text-white">
-      <HeroHint />
+    <div className="fw-ui pointer-events-none absolute inset-0 z-10 text-[#0a0a0a]">
+      <Hero />
       <Brand />
       <Inspector />
       <ChatPanel />
-      <div className="pointer-events-none absolute bottom-[4.75rem] right-5 top-5 flex w-[330px] flex-col gap-3">
+      <div className="pointer-events-none absolute bottom-[5rem] right-5 top-5 flex w-[310px] flex-col gap-2.5">
         <TaskPanel />
         <ActivityFeed />
       </div>

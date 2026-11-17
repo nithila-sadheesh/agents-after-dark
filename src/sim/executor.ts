@@ -3,34 +3,46 @@
 import type { PlanStep, RobotPlan, Vec3, WorkflowStage, WorldEventType } from '../../shared/types';
 import { ROBOT_ID, WAYPOINTS, findRoute, resolveWaypoint, routePoints, type WaypointId } from '../../shared/world';
 import { robotPose } from '../store';
+import { planRoute, poseAt } from './motion';
 import {
   addActivity, advance, angleDelta, animate, check, clamp, easeInOut, emit, get, set, setPosition, sleep,
 } from './runtime';
 
-const SPEED = 2.6;          // units / second (average over a leg)
-const MIN_LEG_MS = 2000;   // short porch legs would otherwise flash by
-const BEAT_MS = 1300;       // pickup / drop-off beat
-const STEP_GAP_MS = 1000;   // breathing room between steps so each one reads on screen
-const TURN_RATE = 0.012;    // heading smoothing (1/ms): ~80ms time constant → quick turns at corners
-const LOOKAHEAD = 0.8;      // start turning slightly before a corner
+const BEAT_MS = 1000;       // pickup / drop-off beat
+const STEP_GAP_MS = 300;    // breathing room between steps so each one reads on screen
+const CROSS_WAIT_MS = 1000; // stopped at the curb, "looking both ways"
+const ARRIVE_DIST = 10;     // m before the destination: "Arriving at …" + camera swings to the destination
+const APPROACH_DIST = 9;    // m before a crosswalk stop: "Approaching the crosswalk"
+const PIVOT_MS = 250;       // turn in place: PIVOT_MS + PIVOT_MS_PER_RAD·|angle|
+const PIVOT_MS_PER_RAD = 160;
 
 const SHOP_SIDE: WaypointId[] = ['dry_cleaner', 'shop_curb'];
+const HOME_SIDE: WaypointId[] = ['home', 'laundry_pickup', 'driveway'];
 const STAGE_CHECKLIST: Partial<Record<WorkflowStage, string>> = {
   PICKING_UP: 'pickup', TRAVELING: 'travel', DROPPING_OFF: 'handoff', SERVICE_PENDING: 'service', RETURNING: 'return',
 };
 
 export interface ExecContext { token: number }
 
-const legLength = (a: Vec3, b: Vec3) => Math.hypot(b[0] - a[0], b[2] - a[2]);
 const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-/** Polyline of every leg the plan will drive (same walk as runPlan), for the pre-approval route preview. */
+const pretty = (id: WaypointId) => id.replace(/_/g, ' ');
+/** Route length between two waypoints (along the graph). */
+const routeLength = (a: WaypointId, b: WaypointId) => {
+  const pts = routePoints(findRoute(a, b));
+  return pts.slice(1).reduce((d, p, i) => d + Math.hypot(p[0] - pts[i][0], p[2] - pts[i][2]), 0);
+};
+
+/** Smoothed polyline of every leg the plan will drive (same walk as runPlan), for the pre-approval route preview. */
 export function previewRoute(plan: RobotPlan): Vec3[] {
   let node: WaypointId = 'home';
   const pts: Vec3[] = [];
   const go = (dest: WaypointId | null) => {
     if (!dest || dest === node) return;
-    for (const p of routePoints(findRoute(node, dest))) if (pts[pts.length - 1] !== p) pts.push(p);
+    for (const p of planRoute(routePoints(findRoute(node, dest))).points) {
+      const l = pts[pts.length - 1];
+      if (!l || Math.hypot(p[0] - l[0], p[2] - l[2]) > 1e-3) pts.push(p);
+    }
     node = dest;
   };
   for (const s of plan.steps) {
@@ -61,60 +73,93 @@ export async function runPlan(plan: RobotPlan, ctx: ExecContext): Promise<void> 
   const atShop = () => SHOP_SIDE.includes(node);
 
   function travelStage(dest: WaypointId): WorkflowStage {
-    const [dx, nx] = [WAYPOINTS[dest][0], WAYPOINTS[node][0]];
-    if (dx >= 0 && dx >= nx) return 'TRAVELING';
+    if (routeLength(dest, 'dry_cleaner') < routeLength(node, 'dry_cleaner')) return 'TRAVELING';
     return !carrying() && !pickedUp && get().item.location === 'home' ? 'PICKING_UP' : 'RETURNING';
   }
 
   function travelStatus(dest: WaypointId): string {
-    if (dest === 'home') return 'Returning home';
+    if (dest === 'home') return carrying() ? 'Heading home' : 'Parking in the front yard';
     if (dest === 'laundry_pickup') {
       if (carrying()) return 'Delivering to the porch';
       return pkg ? 'Heading to the package' : 'Heading to laundry';
     }
-    if (SHOP_SIDE.includes(dest)) return `Driving to ${shopName}`;
-    return `Heading to the ${dest.replace(/_/g, ' ')}`;
+    if (SHOP_SIDE.includes(dest)) return `Heading to ${shopName}`;
+    return `Heading to the ${pretty(dest)}`;
+  }
+
+  /** Where the camera looks when the robot is at (or arriving at) `dest`. */
+  const focusFor = (dest: WaypointId): Vec3 =>
+    SHOP_SIDE.includes(dest) ? WAYPOINTS.dry_cleaner : HOME_SIDE.includes(dest) ? WAYPOINTS.laundry_pickup : WAYPOINTS[dest];
+
+  function arrivedStatus(dest: WaypointId): string {
+    if (dest === 'dry_cleaner') return `Arrived at ${shopName}`;
+    if (dest === 'shop_curb') return `Outside ${shopName}`;
+    if (dest === 'laundry_pickup') return 'At the front steps';
+    if (dest === 'home') return 'Back home';
+    return `Reached the ${pretty(dest)}`;
+  }
+
+  /** Turn in place (skid-steer) to face `target`. Heading stays continuous (no ±π wrap). */
+  async function turnTo(target: number) {
+    const h0 = robotPose.heading;
+    const dh = angleDelta(h0, target);
+    if (Math.abs(dh) < 0.02) { robotPose.heading = h0 + dh; return; }
+    await animate(PIVOT_MS + PIVOT_MS_PER_RAD * Math.abs(dh), t, (p) => { robotPose.heading = h0 + dh * easeInOut(p); });
+    robotPose.heading = h0 + dh;
   }
 
   async function drive(dest: WaypointId, label: string) {
     if (dest === node) return;
     const ids = findRoute(node, dest);
-    const pts = routePoints(ids);
-    const seg = pts.slice(1).map((p, i) => legLength(pts[i], p));
-    const total = seg.reduce((a, b) => a + b, 0);
-    const at = (d: number): Vec3 => {
-      d = clamp(d, 0, total);
-      for (let i = 0; i < seg.length; i++) {
-        if (d <= seg[i] || i === seg.length - 1) {
-          const k = seg[i] > 0 ? Math.min(1, d / seg[i]) : 1;
-          const [a, b] = [pts[i], pts[i + 1]];
-          return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-        }
-        d -= seg[i];
-      }
-      return pts[pts.length - 1];
-    };
+    const route = planRoute(routePoints(ids));
+    const yard = HOME_SIDE.includes(node) && HOME_SIDE.includes(dest); // short porch shuffle: keep the house framed
+    const focus = focusFor(dest);
+    const arriving = SHOP_SIDE.includes(dest) ? `Arriving at ${shopName}`
+      : HOME_SIDE.includes(dest) ? 'Arriving home' : `Arriving at the ${pretty(dest)}`;
 
-    set({ route: pts, shopActive: false, robot: { status: label, moving: true }, camera: { mode: 'follow' } });
+    set({ route: route.points, shopActive: false, robot: { status: label, moving: true },
+      camera: yard ? { mode: 'focus', target: focus } : { mode: 'follow' } });
     ev('robot.moving', { target: dest, progress: 0, detail: ids.join(' → ') });
-    let mark = 1;
-    await animate(Math.max(MIN_LEG_MS, (total / SPEED) * 1000), t, (p, dt) => {
-      const e = easeInOut(p);
-      const d = e * total;
-      const pos = at(d);
-      setPosition(pos);
-      const ahead = at(d + LOOKAHEAD);
-      const [hx, hz] = [ahead[0] - pos[0], ahead[2] - pos[2]];
-      if (hx * hx + hz * hz > 1e-4) {
-        const target = Math.atan2(hx, hz);
-        robotPose.heading += angleDelta(robotPose.heading, target) * (1 - Math.exp(-dt * TURN_RATE));
+
+    let shown = label, moving = true, focused = yard, mark = 1, before = 0;
+    const show = (text: string, mv = true) => {
+      if (text === shown && mv === moving) return;
+      shown = text; moving = mv;
+      status(text, mv);
+    };
+    const pose = { x: 0, z: 0, h: 0 };
+    for (const leg of route.legs) {
+      const cue = (k: number, left: number, r: number) => {
+        if (leg.crossings.some((c, i) => i < r && k >= c.stop && k <= c.clear)) return 'Crossing the street';
+        if (!yard && left <= ARRIVE_DIST) return arriving;
+        for (const c of leg.corners) {
+          if (!c.curb && before + leg.s[c.from] > 4 && k >= c.from && k <= c.to) return `Turning ${c.dir} at the corner`;
+        }
+        for (const c of leg.crossings) if (k <= c.stop && leg.s[c.stop] - leg.s[k] < APPROACH_DIST) return 'Approaching the crosswalk';
+        return label;
+      };
+      await turnTo(leg.h[0]);
+      const runs = [0, ...leg.crossings.map((c) => c.stop), leg.n - 1];
+      for (let r = 0; r + 1 < runs.length; r++) {
+        if (r > 0) { show('Waiting to cross', false); await sleep(CROSS_WAIT_MS, t); }
+        const [t0, t1] = [leg.t[runs[r]], leg.t[runs[r + 1]]];
+        if (t1 <= t0) continue;
+        await animate((t1 - t0) * 1000, t, (p) => {
+          const k = poseAt(leg, t0 + p * (t1 - t0), pose);
+          setPosition([pose.x, 0, pose.z]);
+          robotPose.heading += angleDelta(robotPose.heading, pose.h);
+          const done = before + leg.s[k];
+          const left = route.length - done;
+          if (!focused && left <= ARRIVE_DIST) { focused = true; set({ camera: { mode: 'focus', target: focus } }); }
+          show(cue(k, left, r));
+          while (mark <= 3 && done >= route.length * mark * 0.25) { ev('robot.moving', { target: dest, progress: mark * 0.25 }); mark++; }
+        });
       }
-      while (mark <= 3 && e >= mark * 0.25) { ev('robot.moving', { target: dest, progress: mark * 0.25 }); mark++; }
-    });
+      before += leg.length;
+    }
     setPosition(WAYPOINTS[dest]);
     node = dest;
-    set({ route: null, robot: { status: `Arrived · ${dest.replace(/_/g, ' ')}`, moving: false },
-      camera: { mode: 'focus', target: WAYPOINTS[dest] } });
+    set({ route: null, robot: { status: arrivedStatus(dest), moving: false }, camera: { mode: 'focus', target: focus } });
     ev('robot.arrived', { target: dest });
   }
 
@@ -149,7 +194,8 @@ export async function runPlan(plan: RobotPlan, ctx: ExecContext): Promise<void> 
     const dest = resolveWaypoint(step.target) ?? node;
     if (dest !== node) await moveTo(dest);
     const shop = atShop();
-    if (shop) { stage('DROPPING_OFF'); set({ shopActive: true }); } else advance('delivered');
+    if (shop) { stage('DROPPING_OFF'); set({ shopActive: true, camera: { mode: 'focus', target: WAYPOINTS.dry_cleaner } }); }
+    else advance('delivered');
     status(shop ? `Dropping off at ${shopName}` : 'Dropping off at the porch');
     await beat(() => {
       if (carrying()) set((s) => ({ item: { ...s.item, location: shop ? 'shop' : 'home' } }));
@@ -159,7 +205,7 @@ export async function runPlan(plan: RobotPlan, ctx: ExecContext): Promise<void> 
 
   async function wait(step: PlanStep) {
     stage('SERVICE_PENDING');
-    set({ shopActive: true });
+    set({ shopActive: true, ...(atShop() ? { camera: { mode: 'focus' as const, target: WAYPOINTS.dry_cleaner } } : {}) });
     status(pkg ? 'Store processing' : 'Cleaning in progress');
     await sleep(clamp(step.durationMs ?? 4000, 500, 8000), t);
     if (get().item.location === 'shop') {
@@ -189,7 +235,7 @@ export async function runPlan(plan: RobotPlan, ctx: ExecContext): Promise<void> 
       case 'RETURN_HOME':
         stage('RETURNING');
         ev('robot.returning', { target: 'home' });
-        await moveTo('home', 'RETURNING', 'Returning home');
+        await moveTo('home', 'RETURNING', 'Heading home');
         break;
       case 'REPORT_STATUS':
         addActivity({ source: 'robot', verified: false, status: 'done', text: step.message || 'Status update' });
@@ -198,10 +244,7 @@ export async function runPlan(plan: RobotPlan, ctx: ExecContext): Promise<void> 
     await sleep(STEP_GAP_MS, t);
   }
 
-  if (node !== 'home') await moveTo('home', 'RETURNING', 'Parking in the driveway');
-  const h0 = robotPose.heading;
-  const dh = angleDelta(h0, Math.PI);
-  await animate(900, t, (p) => { robotPose.heading = h0 + dh * easeInOut(p); });
-  robotPose.heading = Math.PI;
+  if (node !== 'home') await moveTo('home', 'RETURNING', 'Parking in the front yard');
+  await turnTo(Math.PI);
   set({ route: null, shopActive: false, robot: { status: 'Parked', moving: false } });
 }

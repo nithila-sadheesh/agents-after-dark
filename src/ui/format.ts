@@ -1,47 +1,48 @@
 import type { ItemKind, PlanStep, WorkflowStage } from '../../shared/types';
 import type { ItemLocation } from '../store';
+import { DEMO_REQUEST } from '../sim/orchestrator';
 
-export const GLASS =
-  'rounded-2xl border border-white/10 bg-slate-950/55 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl';
+/** Solid white surface: hairline border, one very soft neutral shadow to lift it off the 3D scene. */
+export const SURFACE =
+  'border border-[#e8e8e8] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_10px_30px_-14px_rgba(0,0,0,0.18)]';
+export const CARD = `rounded-3xl ${SURFACE}`;
 
 export const isRunning = (s: WorkflowStage) => s !== 'IDLE' && s !== 'COMPLETED' && s !== 'FAILED';
 
-export type Tone = 'slate' | 'violet' | 'blue' | 'sky' | 'amber' | 'emerald' | 'rose';
+/** solid = black pill (work in progress / done), outline = needs you, soft = grey (idle / failed). */
+export type Tone = 'solid' | 'outline' | 'soft';
 
 export const STAGE_META: Record<WorkflowStage, { label: string; tone: Tone }> = {
-  IDLE: { label: 'Idle', tone: 'slate' },
-  PLANNING: { label: 'Planning', tone: 'violet' },
-  COORDINATING: { label: 'Coordinating with Fo', tone: 'blue' },
-  NEEDS_APPROVAL: { label: 'Needs approval', tone: 'amber' },
-  READY: { label: 'Ready to roll', tone: 'sky' },
-  PICKING_UP: { label: 'Picking up', tone: 'blue' },
-  TRAVELING: { label: 'En route', tone: 'blue' },
-  DROPPING_OFF: { label: 'Dropping off', tone: 'blue' },
-  SERVICE_PENDING: { label: 'Service in progress', tone: 'violet' },
-  RETURNING: { label: 'Returning home', tone: 'blue' },
-  COMPLETED: { label: 'Completed', tone: 'emerald' },
-  FAILED: { label: 'Failed', tone: 'rose' },
+  IDLE: { label: 'Idle', tone: 'soft' },
+  PLANNING: { label: 'Planning', tone: 'solid' },
+  COORDINATING: { label: 'Coordinating with Fo', tone: 'solid' },
+  NEEDS_APPROVAL: { label: 'Needs approval', tone: 'outline' },
+  READY: { label: 'Ready to roll', tone: 'solid' },
+  PICKING_UP: { label: 'Picking up', tone: 'solid' },
+  TRAVELING: { label: 'En route', tone: 'solid' },
+  DROPPING_OFF: { label: 'Dropping off', tone: 'solid' },
+  SERVICE_PENDING: { label: 'Service in progress', tone: 'solid' },
+  RETURNING: { label: 'Returning home', tone: 'solid' },
+  COMPLETED: { label: 'Completed', tone: 'solid' },
+  FAILED: { label: 'Failed', tone: 'soft' },
 };
 
 export const TONE_PILL: Record<Tone, string> = {
-  slate: 'bg-white/8 text-white/70 ring-white/15',
-  violet: 'bg-violet-400/15 text-violet-200 ring-violet-300/30',
-  blue: 'bg-indigo-400/15 text-indigo-200 ring-indigo-300/30',
-  sky: 'bg-sky-400/15 text-sky-200 ring-sky-300/30',
-  amber: 'bg-amber-400/15 text-amber-200 ring-amber-300/30',
-  emerald: 'bg-emerald-400/15 text-emerald-200 ring-emerald-300/30',
-  rose: 'bg-rose-400/15 text-rose-200 ring-rose-300/30',
+  solid: 'bg-[#0a0a0a] text-white',
+  outline: 'bg-white text-[#0a0a0a] ring-1 ring-[#0a0a0a]',
+  soft: 'bg-[#f3f3f3] text-[#525252]',
 };
 
 export const TONE_DOT: Record<Tone, string> = {
-  slate: 'bg-white/60',
-  violet: 'bg-violet-300',
-  blue: 'bg-indigo-300',
-  sky: 'bg-sky-300',
-  amber: 'bg-amber-300',
-  emerald: 'bg-emerald-300',
-  rose: 'bg-rose-300',
+  solid: 'bg-white',
+  outline: 'bg-[#0a0a0a]',
+  soft: 'bg-[#a3a3a3]',
 };
+
+export const SUGGESTIONS = [
+  { label: 'Get my clothes dry-cleaned and bring them back', request: DEMO_REQUEST, icon: 'hanger' },
+  { label: 'Return my package to the shipping store', request: 'Return my package to the shipping store', icon: 'box' },
+] as const;
 
 export const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 

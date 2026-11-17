@@ -1,36 +1,77 @@
-// Fixed neighborhood layout + waypoint graph (PRD §9.4). Y is up. Robot model faces +Z at heading 0;
-// heading = Math.atan2(dx, dz). Units ≈ meters. Road runs along X at z = 3.
+// Fixed city layout + waypoint graph (PRD §9.4). Y is up. Robot model faces +Z at heading 0;
+// heading = Math.atan2(dx, dz). Units ≈ meters.
 import type { RobotPlan, SceneSpec, Vec3 } from './types';
 
 export const ROBOT_ID = 'buggy-01';
 
-export const HOME_ANCHOR: Vec3 = [-10, 0, -4];   // house center; front door faces +Z at z ≈ -1.5
-export const SHOP_ANCHOR: Vec3 = [10, 0, -4];    // store center; storefront faces +Z at z ≈ -1.5
-export const ROAD_Z = 3;
-export const ROAD_WIDTH = 3;
-export const ROAD_X_EXTENT: [number, number] = [-24, 24];
+// ---------------- City layout (units ≈ meters, Y up, +Z faces the default camera) ----------------
+// A street grid. Streets running north–south sit at x ∈ STREETS_X; streets running east–west sit at z ∈ STREETS_Z.
+// Each street is ROAD_WIDTH curb-to-curb, flanked by SIDEWALK_WIDTH sidewalks, so building lots start
+// LOT_SETBACK (= ROAD_WIDTH/2 + SIDEWALK_WIDTH) from a street centerline. Blocks are the rectangles between streets.
+// Right-hand traffic: lane centers sit LANE_OFFSET either side of a centerline (eastbound at z+LANE_OFFSET,
+// westbound at z-LANE_OFFSET, southbound(+z) at x-LANE_OFFSET, northbound(-z) at x+LANE_OFFSET).
+export const STREETS_X = [-60, -20, 20, 60] as const;
+export const STREETS_Z = [-40, 0, 40] as const;
+export const ROAD_WIDTH = 10;
+export const SIDEWALK_WIDTH = 3;
+export const LOT_SETBACK = ROAD_WIDTH / 2 + SIDEWALK_WIDTH; // 8
+export const LANE_OFFSET = 2.5;
+export const CITY_BOUNDS = { minX: -100, maxX: 100, minZ: -80, maxZ: 80 } as const; // fill buildings to here (skyline fades into haze beyond)
+export const INTERSECTIONS: Vec3[] = STREETS_X.flatMap((x) => STREETS_Z.map((z) => [x, 0, z] as Vec3));
 
-export type WaypointId = 'home' | 'laundry_pickup' | 'driveway' | 'intersection' | 'shop_curb' | 'dry_cleaner';
+/** Axis-aligned rect on the ground plane. */
+export interface Rect { minX: number; maxX: number; minZ: number; maxZ: number }
+
+// Hero lots — CityBuildings must leave these empty (neighbors may abut them).
+// Home: a narrow city townhouse/brownstone on the block x∈(-60,-20), z∈(-40,0); facade at z=-11 facing +Z (street z=0),
+// with a 3m front stoop/yard z∈[-11,-8] before the sidewalk.
+export const HOME_LOT: Rect = { minX: -46, maxX: -34, minZ: -26, maxZ: -8 };
+export const HOME_ANCHOR: Vec3 = [-40, 0, -18.5];   // footprint center; front door at (-40, 0, -11)
+export const HOME_FACADE_Z = -11;
+// Shop: ground-floor dry-cleaner storefront on the block x∈(-20,20), z∈(0,40); facade right at the property line z=32,
+// facing +Z (street z=40).
+export const SHOP_LOT: Rect = { minX: -9, maxX: 9, minZ: 15, maxZ: 32 };
+export const SHOP_ANCHOR: Vec3 = [0, 0, 24];        // footprint center; front door at (0, 0, 32)
+export const SHOP_FACADE_Z = 32;
+
+// Robot route graph. The robot drives on SIDEWALKS (sidewalk centerline = 6.5 from a street centerline) and crosses
+// streets on crosswalks. The only path home→shop is the chain below: 4 corner turns + 2 crosswalk crossings.
+export type WaypointId =
+  | 'home' | 'laundry_pickup' | 'driveway' | 'corner_a' | 'corner_b'
+  | 'intersection' | 'corner_c' | 'shop_curb' | 'dry_cleaner';
 
 export const WAYPOINTS: Record<WaypointId, Vec3> = {
-  home: [-6.5, 0, 0.2],            // robot parking spot on the driveway
-  laundry_pickup: [-9, 0, 0.6],    // in front of the porch, next to the laundry bag
-  driveway: [-6.5, 0, ROAD_Z],     // driveway meets the road
-  intersection: [0, 0, ROAD_Z],
-  shop_curb: [10, 0, ROAD_Z],
-  dry_cleaner: [10, 0, 0.6],       // drop-off zone in front of the shop door
+  home: [-36.8, 0, -9.4],          // robot parking spot in the townhouse front yard (faces the house: heading π)
+  laundry_pickup: [-40, 0, -9.2],  // walkway at the foot of the stoop, next to the laundry bag
+  driveway: [-40, 0, -6.5],        // sidewalk in front of the house (id kept for planner compatibility)
+  corner_a: [-26.5, 0, -6.5],      // NW corner of intersection (-20, 0)
+  corner_b: [-26.5, 0, 6.5],       // SW corner — reached by crossing street z=0 on the west crosswalk
+  intersection: [-13.5, 0, 6.5],   // SE corner — reached by crossing street x=-20 on the south crosswalk
+  corner_c: [-13.5, 0, 33.5],      // NE corner of intersection (-20, 40)
+  shop_curb: [-5, 0, 33.5],        // sidewalk approaching the shop
+  dry_cleaner: [0, 0, 33.4],       // drop-off spot on the sidewalk at the shop door
 };
 
 export const EDGES: [WaypointId, WaypointId][] = [
   ['home', 'laundry_pickup'],
   ['home', 'driveway'],
   ['laundry_pickup', 'driveway'],
-  ['driveway', 'intersection'],
-  ['intersection', 'shop_curb'],
+  ['driveway', 'corner_a'],
+  ['corner_a', 'corner_b'],
+  ['corner_b', 'intersection'],
+  ['intersection', 'corner_c'],
+  ['corner_c', 'shop_curb'],
   ['shop_curb', 'dry_cleaner'],
 ];
 
-// Plan targets that map onto waypoints.
+/** Crosswalks the robot uses (center, and the axis the robot travels along while crossing). Roads may add zebra
+ *  crossings on every intersection leg; these two must exist. */
+export const ROBOT_CROSSWALKS: { center: Vec3; axis: 'x' | 'z' }[] = [
+  { center: [-26.5, 0, 0], axis: 'z' },   // crossing street z=0, west leg of intersection (-20,0)
+  { center: [-20, 0, 6.5], axis: 'x' },   // crossing street x=-20, south leg of intersection (-20,0)
+];
+
+// Plan targets that map onto waypoints (corner_* are internal and not plan targets).
 export const TARGET_ALIASES: Record<string, WaypointId> = {
   home: 'home', parking: 'home',
   laundry_pickup: 'laundry_pickup', porch: 'laundry_pickup', home_delivery_zone: 'laundry_pickup',
@@ -43,8 +84,8 @@ export const ITEM_TARGETS = ['laundry_bag', 'clean_laundry', 'package', 'item'] 
 
 // Where the item rests when not on the robot.
 export const ITEM_SPOTS: Record<'home' | 'shop', Vec3> = {
-  home: [-9.4, 0, -0.5],
-  shop: [11.2, 0, -0.4],
+  home: [-41.5, 0, -10.2],  // at the foot of the stoop, left of the walkway
+  shop: [1.8, 0, 32.7],     // on the sidewalk beside the shop door
 };
 
 export function resolveWaypoint(target: string | undefined): WaypointId | null {
@@ -103,26 +144,6 @@ export const DEMO_PLAN: RobotPlan = {
   ],
 };
 
-const DECOR: SceneSpec['objects'] = [
-  { id: 'tree-1', type: 'tree', position: [-15, 0, -6] },
-  { id: 'tree-2', type: 'tree', position: [-4, 0, -7] },
-  { id: 'tree-3', type: 'tree', position: [4, 0, -7], scale: 1.2 },
-  { id: 'tree-4', type: 'tree', position: [16, 0, -6] },
-  { id: 'tree-5', type: 'tree', position: [-14, 0, 8] },
-  { id: 'tree-6', type: 'tree', position: [6, 0, 9], scale: 0.9 },
-  { id: 'tree-7', type: 'tree', position: [18, 0, 8] },
-  { id: 'bush-1', type: 'bush', position: [-12.5, 0, -1] },
-  { id: 'bush-2', type: 'bush', position: [-7.5, 0, -1.5] },
-  { id: 'bush-3', type: 'bush', position: [13, 0, -1] },
-  { id: 'lamp-1', type: 'lamp', position: [-3, 0, 5] },
-  { id: 'lamp-2', type: 'lamp', position: [5, 0, 5] },
-  { id: 'lamp-3', type: 'lamp', position: [14, 0, 5] },
-  { id: 'mailbox-1', type: 'mailbox', position: [-5.2, 0, 1.4] },
-  { id: 'car-1', type: 'car', position: [-1, 0, 7], rotation: Math.PI / 2, color: '#e07a5f' },
-  { id: 'car-2', type: 'car', position: [13.5, 0, 7], rotation: Math.PI / 2, color: '#81b29a' },
-  { id: 'bench-1', type: 'bench', position: [7.5, 0, 0.8] },
-];
-
 export const DEFAULT_SCENE: SceneSpec = {
   environment: 'suburban_neighborhood',
   camera: 'isometric',
@@ -132,7 +153,6 @@ export const DEFAULT_SCENE: SceneSpec = {
   objects: [
     { id: 'home', type: 'house', position: HOME_ANCHOR, color: '#f2e8cf' },
     { id: 'shop', type: 'store', position: SHOP_ANCHOR, label: 'DRY CLEANERS', color: '#a8dadc' },
-    ...DECOR,
   ],
 };
 

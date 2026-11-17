@@ -16,7 +16,7 @@ export const DEMO_REQUEST = 'Fo, take my clothes to the dry cleaner, get them cl
 const FO_PROCEED_MS = 25_000;      // stop blocking on Fo after this; keep polling in the background
 const FO_POLL_MS = 2_500;
 const FO_POLL_MAX_MS = 12 * 60_000; // real Fo research replies take ~8-9 min
-const DEMO_AUTO_APPROVE_MS = 2_500;
+const DEMO_AUTO_APPROVE_MS = 1_800;
 const DEMO_QUOTE = '$18.50';
 const QUOTE_RE = /\$\s?\d+(?:\.\d{2})?/;
 
@@ -153,29 +153,29 @@ async function prepareLive(request: string, t: number, s: number) {
 async function prepareDemo(t: number) {
   const staged = (text: string, status: 'pending' | 'done' = 'done') =>
     addActivity({ source: 'fo', verified: false, status, text });
-  await sleep(1800, t);
+  await sleep(877, t);
   set({ stage: 'COORDINATING' });
   setChecklist('fo', 'active');
   emit({ type: 'agent.coordination_started', detail: 'ask_fo' });
   let id = staged('Finding a dry cleaner near you…', 'pending');
   const planId = addActivity({ source: 'claude', verified: false, status: 'pending', text: 'Drafting robot plan…' });
-  await sleep(1700, t);
+  await sleep(828, t);
   updateActivity(id, { status: 'done' });
   staged('Found: Sparkle & Press Dry Cleaners · 0.4 mi · open until 7pm');
-  await sleep(1500, t);
+  await sleep(731, t);
   applyPlan(DEMO_PLAN, 'demo', DEFAULT_SCENE);
   updateActivity(planId, { status: 'done',
     text: `Robot plan ready · ${DEMO_PLAN.steps.length} steps, validated` });
   say('Plan ready: pick up the laundry bag, drive it to the dry cleaner, wait for cleaning, and bring it home.');
-  await sleep(1800, t);
+  await sleep(877, t);
   id = staged('Checking drop-off availability…', 'pending');
-  await sleep(1800, t);
+  await sleep(877, t);
   updateActivity(id, { status: 'done' });
   staged('Robot drop-off accepted · ready by tomorrow 9am');
-  await sleep(1600, t);
+  await sleep(780, t);
   staged(`Quote: ${DEMO_QUOTE} for 3 garments`);
   setChecklist('fo', 'done', 'Fo coordination');
-  await sleep(1600, t);
+  await sleep(780, t);
   return { plan: DEMO_PLAN, foReply: null as string | null, planSource: 'demo' as const };
 }
 
@@ -274,7 +274,7 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
       ? { source: 'system', verified: false, status: 'done', text: `Approved ${approval.amount} locally — nothing sent to Fo, no charge made` }
       : { source: 'system', verified: false, status: 'done', text: 'Payment authorized' });
     last = { plan, planSource, scene: get().scene, task, kind };
-    await sleep(1800, t);
+    await sleep(1000, t);
     await execute(plan, t);
   } catch (e) {
     if (!(e instanceof Aborted) && isCurrent(t)) failTask(e);

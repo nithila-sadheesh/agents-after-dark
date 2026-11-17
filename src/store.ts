@@ -87,3 +87,7 @@ export const robotPose: { position: Vec3; heading: number } = {
 
 let _id = 0;
 export const uid = (p = 'id') => `${p}-${Date.now().toString(36)}-${(_id++).toString(36)}`;
+
+// Dev-only handle for debugging/screenshots: `window.__fo.useFoStore.setState(...)`, `window.__fo.robotPose`.
+// (Importing /src/store.ts from devtools can return a different HMR module instance than the app's.)
+if (import.meta.env.DEV) (window as unknown as { __fo: unknown }).__fo = { useFoStore, robotPose };

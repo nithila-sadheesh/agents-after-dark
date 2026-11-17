@@ -5,6 +5,7 @@ import type { RobotPlan, SceneSpec } from '../../shared/types';
 import { DEFAULT_SCENE, DEMO_PLAN, WAYPOINTS } from '../../shared/world';
 import { initialState, uid, type ApprovalRequest, type ChecklistItem, type FoWorldState } from '../store';
 import * as api from './api';
+import { BOOKING_CONFIRMED_RE, FO_LIVE_ACTIONS } from '../../shared/config';
 import { previewRoute, runPlan } from './executor';
 import {
   Aborted, addActivity, cancelRuns, check, emit, get, isCurrent, newRun, resetPose, say, set, setChecklist, sleep,
@@ -139,7 +140,7 @@ async function runFo(request: string, s: number, fo: FoTrack): Promise<void> {
 async function prepareLive(request: string, t: number, s: number) {
   const fo: FoTrack = { reply: null, settled: false, stillWorkingId: null };
   const foDone = runFo(request, s, fo);
-  const [plan] = await Promise.all([loadPlan(request, t), Promise.race([foDone, sleep(FO_PROCEED_MS, t)])]);
+  const [plan] = await Promise.all([loadPlan(request, t), FO_LIVE_ACTIONS ? foDone : Promise.race([foDone, sleep(FO_PROCEED_MS, t)])]);
   check(t);
   if (!fo.settled) {
     fo.stillWorkingId = addActivity({ source: 'system', verified: false, status: 'pending',
@@ -279,6 +280,7 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
         ? { source: 'system', verified: false, status: 'done', text: `Approved ${approval.amount} locally — nothing sent to Fo, no charge made` }
         : { source: 'system', verified: false, status: 'done', text: 'Payment authorized' });
     }
+    if (FO_LIVE_ACTIONS && opts.mode === 'live') await confirmBookingWithFo(approval.amount, t);
     last = { plan, planSource, scene: get().scene, task, kind };
     await sleep(1000, t);
     await execute(plan, t);
@@ -341,4 +343,27 @@ export async function checkFoStatus(): Promise<void> {
   } catch {
     set((s) => ({ fo: { ...s.fo, connected: false, authenticated: false } }));
   }
+}
+
+/** FO_LIVE_ACTIONS only: send the human's approval to Fo and wait until Fo confirms the booking before dispatch. */
+async function confirmBookingWithFo(amount: string, t: number): Promise<void> {
+  const conversationId = get().fo.conversationId;
+  if (!conversationId) throw new Error('No Fo conversation to approve');
+  set({ robot: { status: 'Waiting for Fo to confirm the booking', moving: false } });
+  const id = addActivity({ source: 'fo', verified: true, status: 'pending', text: `Approval sent to Fo · paying ${amount}` });
+  let r = await api.foApprove(conversationId, amount);
+  const deadline = Date.now() + FO_POLL_MAX_MS;
+  while (!(r.status === 'complete' && r.reply && BOOKING_CONFIRMED_RE.test(r.reply))) {
+    if (r.status === 'error' || r.status === 'unauthenticated' || Date.now() > deadline) {
+      updateActivity(id, { status: 'error' });
+      throw new Error(r.error ?? 'Fo did not confirm the booking');
+    }
+    if (r.progress) updateActivity(id, { text: `Fo is working: ${r.progress}` });
+    await sleep(FO_POLL_MS, t);
+    r = await api.foReply(conversationId);
+  }
+  updateActivity(id, { status: 'done' });
+  addActivity({ source: 'fo', verified: true, status: 'done', text: r.reply! });
+  say(`Fo: ${r.reply}`);
+  emit({ type: 'agent.booking_confirmed', detail: r.reply! });
 }

@@ -23,7 +23,10 @@ npm run dev        # web on http://localhost:5173, API on :8787
 - **Presentation mode:** a one-click, roughly 60s offline demo with scripted Fo activity and no network calls.
 - Without Fo tokens or the Claude key, the app continues with the fallback plan.
 
-Safety: Fo is prompted to research and report only, with no calls, bookings, or payments. The Approve button is local and never charges anything.
+### Real end-to-end mode (`FO_LIVE_ACTIONS` in `shared/config.ts`, currently `false`)
+
+- **Off (default, what the demo runs):** Fo researches only, with no calls, bookings, or payments. Approve is local, and the robot leaves after about 25s while Fo keeps working, because Fo replies can take minutes.
+- **On:** Fo is asked to call the business and book the robot drop-off, then wait for approval before paying. A human's **Approve** click sends the authorization to Fo on the same conversation (`POST /api/fo/approve`, capped by `FO_SPEND_CAP_USD`). The robot is dispatched **only after Fo confirms the booking**. This needs a Wajo account with payment details.
 
 ## Architecture
 

@@ -5,16 +5,22 @@ import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { FoAskResponse, FoStatusResponse } from '../shared/api';
 import { FO_MCP_URL, FileOAuthProvider, hasFoTokens } from './fo-auth';
+import { FO_LIVE_ACTIONS, FO_SPEND_CAP_USD } from '../shared/config';
 
 const ASK_TIMEOUT_MS = 90_000;
 const REPLY_WAIT_SECONDS = 20;
 const REPLY_TIMEOUT_MS = 35_000;
 const LOGIN_HINT = 'Fo is not signed in. Run `npm run fo:login`.';
 
-const coordinationPrompt = (request: string) =>
+const researchPrompt = (request: string) =>
   `I'm coordinating a physical errand: "${request}". A delivery robot at my home will physically carry the items, so don't arrange any human pickup or transportation. Find the right nearby business for this errand (e.g. a dry cleaner that accepts drop-offs) and tell me its name, address, hours, typical price, and any drop-off/pickup requirements. This is a test run — do NOT place phone calls, make bookings, or spend money; research and report back only. Keep it under 100 words.`;
+const actionPrompt = (request: string) =>
+  `Please handle this errand for me: "${request}". A delivery robot at my home will physically carry the items to and from the business, so don't arrange any human pickup or transportation. Find the best nearby business for it (e.g. a dry cleaner that accepts drop-offs), call them, and book a drop-off for my robot as soon as possible. Get the exact price. Do NOT pay yet — ask me to approve the amount first. When the booking is confirmed, reply with the business name, address, drop-off time, ready time and price.`;
+const coordinationPrompt = (request: string) => (FO_LIVE_ACTIONS ? actionPrompt(request) : researchPrompt(request));
 const followUpPrompt = (message: string) =>
-  `${message}\n\n(Test run: research and report only. Do NOT place calls, make bookings, or spend money.)`;
+  FO_LIVE_ACTIONS ? message : `${message}\n\n(Test run: research and report only. Do NOT place calls, make bookings, or spend money.)`;
+const approvalPrompt = (amount: string) =>
+  `Approved: please pay ${amount} (up to $${FO_SPEND_CAP_USD}) and confirm the booking. My robot will drop the items off at the booked time. Reply with the confirmation and receipt.`;
 
 interface Conn { client: Client; tools: Tool[] }
 let conn: Promise<Conn> | null = null;
@@ -119,4 +125,10 @@ export async function getFoStatus(): Promise<FoStatusResponse> {
   } catch (err) {
     return { connected: false, authenticated: !isAuthError(err), tools: [], error: errMsg(err) };
   }
+}
+
+/** Sends the human's payment approval to Fo on the same conversation. Only active when FO_LIVE_ACTIONS is on. */
+export function approveFo(conversationId: string, amount: string): Promise<FoResult> {
+  if (!FO_LIVE_ACTIONS) return Promise.resolve({ ok: false, status: 'error', conversationId, reply: null, error: 'FO_LIVE_ACTIONS is off' });
+  return callTool('ask_fo', { message: approvalPrompt(amount), conversationId }, ASK_TIMEOUT_MS, conversationId);
 }

@@ -2,7 +2,7 @@
 import 'dotenv/config';
 import express from 'express';
 import type { FoAskRequest, PlanRequest } from '../shared/api';
-import { askFo, getFoReply, getFoStatus } from './fo';
+import { approveFo, askFo, getFoReply, getFoStatus } from './fo';
 import { planRequest } from './planner';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -34,6 +34,12 @@ app.post('/api/fo/ask', async (req, res) => {
   if (!nonEmpty(body?.message)) return badRequest(res, `"message" must be a non-empty string (max ${MAX_REQUEST_CHARS} chars)`);
   if (body.conversationId !== undefined && !nonEmpty(body.conversationId)) return badRequest(res, '"conversationId" must be a string');
   res.json(await askFo(body.message.trim(), body.conversationId));
+});
+
+app.post('/api/fo/approve', async (req, res) => {
+  const body = (req.body ?? {}) as { conversationId?: unknown; amount?: unknown };
+  if (!nonEmpty(body.conversationId) || !nonEmpty(body.amount)) return badRequest(res, '"conversationId" and "amount" are required');
+  res.json(await approveFo(body.conversationId.trim(), body.amount.trim()));
 });
 
 app.get('/api/fo/reply', async (req, res) => {

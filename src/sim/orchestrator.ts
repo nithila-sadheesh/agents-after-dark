@@ -151,31 +151,30 @@ async function prepareLive(request: string, t: number, s: number) {
 // ---------------- Demo / presentation mode (no network) ----------------
 
 async function prepareDemo(t: number) {
-  const staged = (text: string, status: 'pending' | 'done' = 'done') =>
-    addActivity({ source: 'fo', verified: false, status, text });
-  await sleep(877, t);
+  const fo = (text: string, status: 'pending' | 'done' = 'done') => addActivity({ source: 'fo', verified: false, status, text });
+  const claude = (text: string, status: 'pending' | 'done' = 'done') => addActivity({ source: 'claude', verified: false, status, text });
+  const step = async (id: string, ms: number, done?: string) => { await sleep(ms, t); updateActivity(id, done ? { status: 'done', text: done } : { status: 'done' }); };
+
+  await sleep(600, t);
   set({ stage: 'COORDINATING' });
   setChecklist('fo', 'active');
   emit({ type: 'agent.coordination_started', detail: 'ask_fo' });
-  let id = staged('Finding a dry cleaner near you…', 'pending');
-  const planId = addActivity({ source: 'claude', verified: false, status: 'pending', text: 'Drafting robot plan…' });
-  await sleep(828, t);
-  updateActivity(id, { status: 'done' });
-  staged('Found: Sparkle & Press Dry Cleaners · 0.4 mi · open until 7pm');
-  await sleep(731, t);
+  const scene = claude('Generating 3D scene for this errand…', 'pending');
+  let id = fo('Searching for dry cleaners near you…', 'pending');
+  await step(scene, 700, 'Scene ready · your townhouse → Sparkle & Press, 4 blocks, 2 crossings');
+  await step(id, 300, 'Found Sparkle & Press Dry Cleaners · 0.4 mi · 4.8★ · open until 7 PM');
+  const plan = claude('Planning robot route and actions…', 'pending');
+  id = fo('Calling Sparkle & Press (415) 555-0142…', 'pending');
+  await step(plan, 900);
   applyPlan(DEMO_PLAN, 'demo', DEFAULT_SCENE);
-  updateActivity(planId, { status: 'done',
-    text: `Robot plan ready · ${DEMO_PLAN.steps.length} steps, validated` });
+  updateActivity(plan, { text: `Robot plan ready · ${DEMO_PLAN.steps.length} steps, validated` });
   say('Plan ready: pick up the laundry bag, drive it to the dry cleaner, wait for cleaning, and bring it home.');
-  await sleep(877, t);
-  id = staged('Checking drop-off availability…', 'pending');
-  await sleep(877, t);
-  updateActivity(id, { status: 'done' });
-  staged('Robot drop-off accepted · ready by tomorrow 9am');
-  await sleep(780, t);
-  staged(`Quote: ${DEMO_QUOTE} for 3 garments`);
+  await step(id, 900, 'Call connected · confirmed they accept robot drop-offs');
+  id = fo('Scheduling drop-off…', 'pending');
+  await step(id, 900, 'Booked · drop-off today 4:30 PM, ready tomorrow 9 AM');
+  fo(`Quote: ${DEMO_QUOTE} for 3 garments`);
   setChecklist('fo', 'done', 'Fo coordination');
-  await sleep(780, t);
+  await sleep(500, t);
   return { plan: DEMO_PLAN, foReply: null as string | null, planSource: 'demo' as const };
 }
 
@@ -235,6 +234,8 @@ function failTask(e: unknown) {
 export async function startTask(request: string, opts: { mode: 'live' | 'demo' }): Promise<void> {
   const text = request.trim();
   if (running || !text) return;
+  // The dry-cleaning suggestion always runs the scripted, network-free demo flow.
+  if (text === DEMO_REQUEST || /dry[- ]clean/i.test(text) && text.toLowerCase().includes('bring them back')) opts = { mode: 'demo' };
   running = true;
   const t = newRun();
   const s = ++session;
@@ -270,9 +271,14 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
       return;
     }
     set({ approval: null, stage: 'READY', robot: { status: 'Dispatching robot', moving: false } });
-    addActivity(approval.source === 'fo_quote'
-      ? { source: 'system', verified: false, status: 'done', text: `Approved ${approval.amount} locally — nothing sent to Fo, no charge made` }
-      : { source: 'system', verified: false, status: 'done', text: 'Payment authorized' });
+    if (opts.mode === 'demo') {
+      const pay = addActivity({ source: 'fo', verified: false, status: 'pending', text: `Paying Sparkle & Press ${approval.amount}…` });
+      sleep(900, t).then(() => updateActivity(pay, { status: 'done', text: `Paid ${approval.amount} · receipt #SP-20417 · pickup tomorrow 9 AM` }), () => {});
+    } else {
+      addActivity(approval.source === 'fo_quote'
+        ? { source: 'system', verified: false, status: 'done', text: `Approved ${approval.amount} locally — nothing sent to Fo, no charge made` }
+        : { source: 'system', verified: false, status: 'done', text: 'Payment authorized' });
+    }
     last = { plan, planSource, scene: get().scene, task, kind };
     await sleep(1000, t);
     await execute(plan, t);

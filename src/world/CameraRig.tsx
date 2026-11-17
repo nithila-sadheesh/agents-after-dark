@@ -20,7 +20,7 @@ const OVERVIEW_TARGET = new THREE.Vector3(-19, 0, 2);
 const OVERVIEW_AZIM = THREE.MathUtils.degToRad(24);   // from +Z toward +X
 const OVERVIEW_ELEV = THREE.MathUtils.degToRad(31);
 const OVERVIEW_DIST = 138;
-const FOCUS_OFFSET = new THREE.Vector3(7, 15, 14);      // ~21.7m
+const FOCUS_OFFSET = new THREE.Vector3(3, 19, 9.5);     // steep, stays above the street so buildings across it never block the view
 const FOLLOW_BACK = 15.5, FOLLOW_UP = 10.5;              // chase offset; lifts/pulls in while swinging through turns
 const USER_HOLD_MS = 3000;
 

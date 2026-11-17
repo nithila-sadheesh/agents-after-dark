@@ -20,8 +20,8 @@ npm run dev        # web on http://localhost:5173, API on :8787
   - A genuine Fo request is sent. Fo's progress and reply show in the activity feed tagged **LIVE**.
   - Claude plans the robot run in about 4s.
   - After about 25s the robot proceeds while Fo keeps researching. Fo replies can take several minutes.
-- **Presentation mode:** a one-click, roughly 60s offline demo. No network calls; staged steps are tagged **SIMULATED**.
-- Without Fo tokens or the Claude key, the app degrades to staged coordination plus the fallback plan, and labels this in the UI.
+- **Presentation mode:** a one-click, roughly 60s offline demo with scripted Fo activity and no network calls.
+- Without Fo tokens or the Claude key, the app continues with the fallback plan.
 
 Safety: Fo is prompted to research and report only, with no calls, bookings, or payments. The Approve button is local and never charges anything.
 

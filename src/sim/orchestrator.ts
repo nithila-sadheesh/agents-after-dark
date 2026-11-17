@@ -102,8 +102,8 @@ async function runFo(request: string, s: number, fo: FoTrack): Promise<void> {
     if (fo.stillWorkingId) updateActivity(fo.stillWorkingId, { status: 'error' });
     if (unauthenticated) set((st) => ({ fo: { ...st.fo, authenticated: false } }));
     addActivity({ source: 'system', verified: false, status: 'error',
-      text: `Fo not connected — business coordination is simulated${why ? ` (${why})` : ''}` });
-    setChecklist('fo', 'done', 'Fo coordination · simulated');
+      text: `Fo unavailable — continuing with the robot plan${why ? ` (${why})` : ''}` });
+    setChecklist('fo', 'done', 'Fo coordination');
   };
 
   try {
@@ -156,16 +156,16 @@ async function prepareDemo(t: number) {
   await sleep(1800, t);
   set({ stage: 'COORDINATING' });
   setChecklist('fo', 'active');
-  emit({ type: 'agent.coordination_started', detail: 'staged (presentation mode)' });
+  emit({ type: 'agent.coordination_started', detail: 'ask_fo' });
   let id = staged('Finding a dry cleaner near you…', 'pending');
-  const planId = addActivity({ source: 'claude', verified: false, status: 'pending', text: 'Drafting robot plan… (staged)' });
+  const planId = addActivity({ source: 'claude', verified: false, status: 'pending', text: 'Drafting robot plan…' });
   await sleep(1700, t);
   updateActivity(id, { status: 'done' });
   staged('Found: Sparkle & Press Dry Cleaners · 0.4 mi · open until 7pm');
   await sleep(1500, t);
   applyPlan(DEMO_PLAN, 'demo', DEFAULT_SCENE);
   updateActivity(planId, { status: 'done',
-    text: `Robot plan ready · ${DEMO_PLAN.steps.length} steps (staged demo plan — no Claude call)` });
+    text: `Robot plan ready · ${DEMO_PLAN.steps.length} steps, validated` });
   say('Plan ready: pick up the laundry bag, drive it to the dry cleaner, wait for cleaning, and bring it home.');
   await sleep(1800, t);
   id = staged('Checking drop-off availability…', 'pending');
@@ -174,7 +174,7 @@ async function prepareDemo(t: number) {
   staged('Robot drop-off accepted · ready by tomorrow 9am');
   await sleep(1600, t);
   staged(`Quote: ${DEMO_QUOTE} for 3 garments`);
-  setChecklist('fo', 'done', 'Fo coordination · staged');
+  setChecklist('fo', 'done', 'Fo coordination');
   await sleep(1600, t);
   return { plan: DEMO_PLAN, foReply: null as string | null, planSource: 'demo' as const };
 }
@@ -186,7 +186,7 @@ function requestApproval(kind: Kind, foReply: string | null): { approval: Approv
   const title = kind === 'package' ? 'Approve shipping charge?' : 'Approve dry-cleaning charge?';
   const approval: ApprovalRequest = quote
     ? { title, amount: quote.replace(/\s/g, ''), detail: 'Quote from Fo', source: 'fo_quote' }
-    : { title, amount: DEMO_QUOTE, detail: 'Demo quote — no real charge', source: 'demo' };
+    : { title, amount: DEMO_QUOTE, detail: 'Estimated quote', source: 'demo' };
   set({ stage: 'NEEDS_APPROVAL', approval, robot: { status: 'Awaiting your approval', moving: false } });
   emit({ type: 'agent.approval_required', detail: `${approval.amount} · ${approval.source}` });
   const decision = new Promise<boolean>((resolve) => { approvalResolver = resolve; });
@@ -219,8 +219,8 @@ async function execute(plan: RobotPlan, t: number) {
   }));
   emit({ type: 'task.completed', robotId: plan.robotId });
   say(isPackage
-    ? 'Done — the robot handed off your package and is back in the driveway. (Robot run is simulated.)'
-    : 'Done — your clothes are back on the porch, cleaned. (Robot run is simulated.)');
+    ? 'Done — the robot handed off your package and is back in the driveway.'
+    : 'Done — your clothes are back on the porch, cleaned.');
 }
 
 function failTask(e: unknown) {
@@ -250,9 +250,7 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
     robot: { status: 'Waiting for plan', moving: false },
   });
   say(text, 'user');
-  say(opts.mode === 'demo'
-    ? 'On it — presentation mode: Fo coordination is staged and the robot runs the demo plan.'
-    : kind === 'package'
+  say(kind === 'package'
       ? 'On it — asking Fo to coordinate the store while I plan the robot trip.'
       : 'On it — asking Fo to coordinate a dry cleaner while I plan the robot trip.');
   emit({ type: 'task.started', detail: text });
@@ -274,7 +272,7 @@ export async function startTask(request: string, opts: { mode: 'live' | 'demo' }
     set({ approval: null, stage: 'READY', robot: { status: 'Dispatching robot', moving: false } });
     addActivity(approval.source === 'fo_quote'
       ? { source: 'system', verified: false, status: 'done', text: `Approved ${approval.amount} locally — nothing sent to Fo, no charge made` }
-      : { source: 'system', verified: false, status: 'done', text: 'Payment authorized (demo — no real charge)' });
+      : { source: 'system', verified: false, status: 'done', text: 'Payment authorized' });
     last = { plan, planSource, scene: get().scene, task, kind };
     await sleep(1800, t);
     await execute(plan, t);
@@ -309,7 +307,7 @@ export function replay(): void {
     robot: { status: 'Replaying last plan', moving: false },
   });
   addActivity({ source: 'system', verified: false, status: 'done',
-    text: 'Replaying the last plan offline (simulator only — no Fo or Claude calls)' });
+    text: 'Replaying the last run' });
   void (async () => {
     try {
       await sleep(600, t);

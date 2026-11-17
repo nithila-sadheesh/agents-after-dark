@@ -18,7 +18,7 @@ export default function Brand() {
   const badge = {
     checking: { text: 'Checking Fo…', cls: 'text-white/55 ring-white/10 bg-white/5', dot: 'bg-white/50 animate-pulse' },
     on: { text: 'Fo connected', cls: 'text-emerald-200 ring-emerald-400/30 bg-emerald-400/10', dot: 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' },
-    off: { text: 'Fo not connected — staged mode', cls: 'text-amber-200 ring-amber-400/30 bg-amber-400/10', dot: 'bg-amber-300' },
+    off: { text: 'Fo not connected', cls: 'text-amber-200 ring-amber-400/30 bg-amber-400/10', dot: 'bg-amber-300' },
   }[state];
 
   return (

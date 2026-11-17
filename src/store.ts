@@ -24,7 +24,7 @@ export interface ActivityEntry {
 export interface ApprovalRequest {
   title: string;        // "Approve dry-cleaning charge?"
   amount: string;       // "$18.50"
-  detail: string;       // "Quote from Fo" / "Demo quote — no real charge"
+  detail: string;       // "Quote from Fo" / "Estimated quote"
   source: 'fo_quote' | 'demo';
 }
 

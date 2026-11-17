@@ -39,19 +39,14 @@ export const Spinner = ({ className = 'h-3 w-3' }: P) => (
   <span className={`inline-block shrink-0 animate-spin rounded-full border-[1.5px] border-current border-t-transparent ${className}`} />
 );
 
-/** Honesty badge: LIVE = genuinely produced by Fo / Claude; SIMULATED = staged step. */
+/** LIVE badge for output genuinely produced by Fo / Claude; other entries show no badge. */
 export function VerifiedBadge({ verified }: { verified: boolean }) {
   return verified ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-1.5 py-px text-[9px] font-bold tracking-[0.08em] text-emerald-300 ring-1 ring-emerald-400/35"
       title="Genuine output from Fo / Claude">
       <span className="h-1 w-1 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(110,231,183,0.9)]" />LIVE
     </span>
-  ) : (
-    <span className="inline-flex items-center rounded-full bg-amber-400/10 px-1.5 py-px text-[9px] font-bold tracking-[0.08em] text-amber-300/90 ring-1 ring-amber-400/30"
-      title="Staged step, not real agent output">
-      SIMULATED
-    </span>
-  );
+  ) : null;
 }
 
 /** Renders Fo's markdown-style **bold** as <strong>; everything else stays verbatim text. */

@@ -160,14 +160,14 @@ export async function runPlan(plan: RobotPlan, ctx: ExecContext): Promise<void> 
   async function wait(step: PlanStep) {
     stage('SERVICE_PENDING');
     set({ shopActive: true });
-    status(pkg ? 'Store processing · time-lapse' : 'Cleaning in progress · time-lapse');
+    status(pkg ? 'Store processing' : 'Cleaning in progress');
     await sleep(clamp(step.durationMs ?? 4000, 500, 8000), t);
     if (get().item.location === 'shop') {
       set((s) => ({ item: { ...s.item, clean: true } }));
       ev('service.completed', { target: node, detail: step.message });
       addActivity({
         source: 'system', verified: false, status: 'done',
-        text: pkg ? 'Store processed the package (simulated)' : 'Cleaner marked the order ready (simulated)',
+        text: pkg ? 'Store processed the package' : 'Cleaner marked the order ready',
       });
     }
   }

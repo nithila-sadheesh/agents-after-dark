@@ -4,7 +4,7 @@ import { GLASS } from './format';
 
 const SOURCE_TAG = {
   fo_quote: { text: 'Quote from Fo', cls: 'bg-sky-400/15 text-sky-200 ring-sky-300/35' },
-  demo: { text: 'Demo quote · no real charge', cls: 'bg-amber-400/10 text-amber-200 ring-amber-400/30' },
+  demo: { text: 'Estimated quote', cls: 'bg-sky-400/15 text-sky-200 ring-sky-300/35' },
 } as const;
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');

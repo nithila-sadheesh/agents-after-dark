@@ -54,7 +54,7 @@ Actions (use exactly these):
 - MOVE_TO {target: waypoint} - drive to a waypoint.
 - PICK_UP {target: item id} - load an item. Only when not already carrying something.
 - DROP_OFF {target: waypoint} - unload the carried item at a waypoint. Only while carrying.
-- WAIT {durationMs} - wait at the current location; 3000-5000 ms represents compressed service time (a time-lapse of hours or days). Add a short message such as "Cleaning in progress (time-lapse)".
+- WAIT {durationMs} - wait at the current location; 3000-5000 ms represents compressed service time (a time-lapse of hours or days). Add a short message such as "Cleaning in progress".
 - RETURN_HOME {} - drive back to the parking spot. No target.
 - REPORT_STATUS {message} - post a short status line (max 200 chars).
 

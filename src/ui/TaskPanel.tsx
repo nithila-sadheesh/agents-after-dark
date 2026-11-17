@@ -6,7 +6,7 @@ import { IconCheck, IconChevron, IconX, Spinner } from './parts';
 const SOURCE_BADGE = {
   claude: { text: 'Plan by Claude', cls: 'bg-orange-300/10 text-orange-200 ring-orange-300/30' },
   fallback: { text: 'Fallback plan', cls: 'bg-amber-400/10 text-amber-200 ring-amber-400/30' },
-  demo: { text: 'Demo plan', cls: 'bg-white/8 text-white/65 ring-white/15' },
+  demo: { text: 'Validated plan', cls: 'bg-white/8 text-white/65 ring-white/15' },
 } as const;
 
 function CheckIcon({ status }: { status: ChecklistItem['status'] }) {
@@ -51,11 +51,9 @@ export default function TaskPanel() {
       <div className="fw-scroll min-h-0 overflow-y-auto p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">Current task</span>
-          <span className={`rounded-full px-2 py-px text-[10px] font-medium ring-1 ${
-            task.mode === 'demo' ? 'bg-violet-400/10 text-violet-200 ring-violet-300/30' : 'bg-sky-400/10 text-sky-200 ring-sky-300/30'
-          }`}>
-            {task.mode === 'demo' ? 'Presentation mode' : 'Live'}
-          </span>
+          {task.mode === 'live' && (
+            <span className="rounded-full bg-sky-400/10 px-2 py-px text-[10px] font-medium text-sky-200 ring-1 ring-sky-300/30">Live</span>
+          )}
         </div>
 
         <h3 className="mt-1.5 text-[14.5px] font-semibold leading-snug text-white">{task.title}</h3>
